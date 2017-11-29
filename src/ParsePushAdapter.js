@@ -5,9 +5,9 @@ import APNS from './APNS';
 import GCM from './GCM';
 import { classifyInstallations } from './PushAdapterUtils';
 
-const LOG_PREFIX = 'parse-server-push-adapter';
+const LOG_PREFIX = 'lezme-parse-server-push-adapter';
 
-export default class ParsePushAdapter {
+export default class LezmeParsePushAdapter {
 
   supportsPushTracking = true;
 
