@@ -24,7 +24,7 @@ export class MGCM {
         } else if (typeof args === 'object') {
             fcmArgsList.push(args);
         } else {
-            throw new Parse.Error(Parse.Error.PUSH_MISCONFIGURED, 'GCM Configuration is invalid');
+            throw new Parse.Error(Parse.Error.PUSH_MISCONFIGURED, 'Multi-GCM Configuration is invalid');
         }
 
         // Create Provider from each arg-object
@@ -69,7 +69,7 @@ MGCM.prototype.send = function (data, devices) {
     let timestamp = Date.now();
     // For android, we can only have 1000 recepients per send, so we need to slice devices to
     // chunk if necessary
-    let slices = sliceDevices(devices, GCM.GCMRegistrationTokensMax);
+    let slices = sliceDevices(devices, MGCM.GCMRegistrationTokensMax);
     if (slices.length > 1) {
         log.verbose(LOG_PREFIX, `the number of devices exceeds ${GCMRegistrationTokensMax}`);
         // Make 1 send per slice
@@ -78,8 +78,8 @@ MGCM.prototype.send = function (data, devices) {
             memo.push(promise);
             return memo;
         }, [])
-        return Parse.Promise.when(promises).then((results) =>  {
-            let allResults = results.reduce((memo, result) =>  {
+        return Parse.Promise.when(promises).then((results) => {
+            let allResults = results.reduce((memo, result) => {
                 return memo.concat(result);
             }, []);
             return Parse.Promise.as(allResults);
@@ -100,55 +100,71 @@ MGCM.prototype.send = function (data, devices) {
     // Make and send gcm request
     let message = new gcm.Message(gcmPayload);
 
-    // Build a device map
-    let devicesMap = devices.reduce((memo, device) => {
-        memo[device.deviceToken] = device;
-        return memo;
-    }, {});
+    let devicesPerAppIdentifier = {};
 
-    let deviceTokens = Object.keys(devicesMap);
-
-    let promises = deviceTokens.map(() =>  new Parse.Promise());
-    let registrationTokens = deviceTokens;
-    let length = registrationTokens.length;
-    log.verbose(LOG_PREFIX, `sending to ${length} ${length >  1 ? 'devices' : 'device'}`);
-    this.sender.send(message, { registrationTokens: registrationTokens }, 5, (error, response) => {
-        // example response:
-        /*
-        {  "multicast_id":7680139367771848000,
-          "success":0,
-          "failure":4,
-          "canonical_ids":0,
-          "results":[ {"error":"InvalidRegistration"},
-            {"error":"InvalidRegistration"},
-            {"error":"InvalidRegistration"},
-            {"error":"InvalidRegistration"}] }
-        */
-        if (error) {
-            log.error(LOG_PREFIX, `send errored: %s`, JSON.stringify(error, null, 4));
-        } else {
-            log.verbose(LOG_PREFIX, `GCM Response: %s`, JSON.stringify(response, null, 4));
-        }
-        let { results, multicast_id } = response || {};
-        registrationTokens.forEach((token, index) => {
-            let promise = promises[index];
-            let result = results ? results[index] : undefined;
-            let device = devicesMap[token];
-            device.deviceType = 'android';
-            let resolution = {
-                device,
-                multicast_id,
-                response: error || result,
-            };
-            if (!result || result.error) {
-                resolution.transmitted = false;
-            } else {
-                resolution.transmitted = true;
-            }
-            promise.resolve(resolution);
-        });
+    // Start by clustering the devices per appIdentifier
+    devices.forEach(device => {
+        let appIdentifier = device.appIdentifier;
+        devicesPerAppIdentifier[appIdentifier] = devicesPerAppIdentifier[appIdentifier] || [];
+        devicesPerAppIdentifier[appIdentifier].push(device);
     });
-    return Parse.Promise.when(promises);
+
+    for (let key in devicesPerAppIdentifier) {
+        let devices = devicesPerAppIdentifier[key];
+        let provider = this.mapProviders[key];
+        if (!provider)
+            continue;
+
+        // Build a device map
+        let devicesMap = devices.reduce((memo, device) => {
+            memo[device.deviceToken] = device;
+            return memo;
+        }, {});
+
+        let deviceTokens = Object.keys(devicesMap);
+
+        let promises = deviceTokens.map(() => new Parse.Promise());
+        let registrationTokens = deviceTokens;
+        let length = registrationTokens.length;
+        log.verbose(LOG_PREFIX, `sending to ${length} ${length > 1 ? 'devices' : 'device'}`);
+        provider.send(message, { registrationTokens: registrationTokens }, 5, (error, response) => {
+            // example response:
+            /*
+            {  "multicast_id":7680139367771848000,
+              "success":0,
+              "failure":4,
+              "canonical_ids":0,
+              "results":[ {"error":"InvalidRegistration"},
+                {"error":"InvalidRegistration"},
+                {"error":"InvalidRegistration"},
+                {"error":"InvalidRegistration"}] }
+            */
+            if (error) {
+                log.error(LOG_PREFIX, `send errored: %s`, JSON.stringify(error, null, 4));
+            } else {
+                log.verbose(LOG_PREFIX, `GCM Response: %s`, JSON.stringify(response, null, 4));
+            }
+            let { results, multicast_id } = response || {};
+            registrationTokens.forEach((token, index) => {
+                let promise = promises[index];
+                let result = results ? results[index] : undefined;
+                let device = devicesMap[token];
+                device.deviceType = 'android';
+                let resolution = {
+                    device,
+                    multicast_id,
+                    response: error || result,
+                };
+                if (!result || result.error) {
+                    resolution.transmitted = false;
+                } else {
+                    resolution.transmitted = true;
+                }
+                promise.resolve(resolution);
+            });
+        });
+        return Parse.Promise.when(promises);
+    }
 }
 
 /**
@@ -203,9 +219,9 @@ function sliceDevices(devices, chunkSize) {
     return chunkDevices;
 }
 
-GCM.generateGCMPayload = generateGCMPayload;
+MGCM.generateGCMPayload = generateGCMPayload;
 
 /* istanbul ignore else */
 if (process.env.TESTING) {
-    GCM.sliceDevices = sliceDevices;
+    MGCM.sliceDevices = sliceDevices;
 }

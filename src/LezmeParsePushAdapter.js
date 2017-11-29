@@ -3,6 +3,7 @@ import Parse from 'parse';
 import log from 'npmlog';
 import APNS from './APNS';
 import GCM from './GCM';
+import MGCM from './MGCM';
 import { classifyInstallations } from './PushAdapterUtils';
 
 const LOG_PREFIX = 'lezme-parse-server-push-adapter';
@@ -33,7 +34,7 @@ export default class LezmeParsePushAdapter {
           break;
         case 'android':
         case 'fcm':
-          this.senderMap[pushType] = new GCM(pushConfig[pushType]);
+          this.senderMap[pushType] = new MGCM(pushConfig[pushType]);
           break;
       }
     }
