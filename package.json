@@ -1,5 +1,5 @@
 {
-  "name": "@parse/lezme-push-adapter",
+  "name": "lezme-push-adapter",
   "version": "1.0.0",
   "description": "Base parse-server-push-adapter",
   "main": "lib/index.js",
@@ -18,7 +18,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/parse-server-modules/parse-server-push-adapter.git"
+    "url": "git+https://github.com/huynhtruong/parse-server-push-adapter.git"
   },
   "author": "Parse",
   "license": "MIT",
